@@ -12,11 +12,7 @@ type Options struct {
 }
 
 // DownloadInBackground downloads a file in the background with output redirected to log file
-func DownloadInBackground(url string, options *Options) error {
-	// Create logger for background mode (will redirect to wget-log)
-	logger := logging.NewLogger(true)
-	defer logger.Close()
-
+func DownloadInBackground(url string, options *Options, logger *logging.Logger) error {
 	// Convert bg.Options to downloader.Options
 	downloaderOptions := &downloader.Options{
 		OutputName: options.OutputName,

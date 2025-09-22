@@ -1,14 +1,13 @@
 package batch
 
 import (
-    "bufio"
-    "fmt"
-    "net/http"
-    "os"
-    "strings"
-    "sync"
-    "wget/internal/downloader"
-    "wget/internal/logging"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"wget/internal/downloader"
+	"wget/internal/logging"
 )
 
 type Options struct {
@@ -119,24 +118,45 @@ func DownloadFromFile(filename string, options *Options, logger *logging.Logger)
 
 // readURLsFromFile reads URLs from a text file, one URL per line
 func readURLsFromFile(filename string) ([]string, error) {
-	file, err := os.Open(filename)
+	// Read the entire file content first
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
+	// Convert to string and handle different encodings
+	text := string(content)
+	
+	// Remove BOM if present at the beginning of file
+	if strings.HasPrefix(text, "\uFEFF") {
+		text = strings.TrimPrefix(text, "\uFEFF")
+	}
+	
+	// Handle UTF-16 BOM by removing the problematic bytes
+	if len(content) >= 2 && content[0] == 0xFF && content[1] == 0xFE {
+		// UTF-16 LE BOM detected, try to clean it
+		text = strings.ReplaceAll(text, "\x00", "") // Remove null bytes from UTF-16
+		text = strings.TrimPrefix(text, "\xFF\xFE") // Remove BOM
+	}
+	
+	// Split into lines and process each
+	lines := strings.Split(text, "\n")
 	var urls []string
-	scanner := bufio.NewScanner(file)
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	
+	for _, line := range lines {
+		// Clean the line thoroughly
+		line = strings.TrimSpace(line)
+		line = strings.ReplaceAll(line, "\r", "")
+		line = strings.ReplaceAll(line, "\x00", "") // Remove any remaining null characters
+		
+		// Remove any non-printable characters at the beginning
+		for len(line) > 0 && (line[0] < 32 || line[0] > 126) && line[0] != '\t' {
+			line = line[1:]
+		}
+		
 		if line != "" && !strings.HasPrefix(line, "#") {
 			urls = append(urls, line)
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
 	}
 
 	return urls, nil

@@ -13,15 +13,15 @@ import (
 )
 
 type Config struct {
-	URL         string
-	OutputName  string
-	OutputPath  string
-	RateLimit   string
-	Background  bool
-	InputFile   string
-	Mirror      bool
-	Reject      string
-	Exclude     string
+	URL          string
+	OutputName   string
+	OutputPath   string
+	RateLimit    string
+	Background   bool
+	InputFile    string
+	Mirror       bool
+	Reject       string
+	Exclude      string
 	ConvertLinks bool
 }
 
@@ -45,15 +45,19 @@ func main() {
 
 	// Get URL from command line arguments
 	args := flag.Args()
-	if len(args) == 0 && config.InputFile == "" {
-		fmt.Fprintf(os.Stderr, "Error: URL required\n")
+	
+	// Only set URL if we have args and no input file specified
+	if len(args) > 0 && config.InputFile == "" {
+		config.URL = args[0]
+	}
+	
+	// Check if we have either URL or input file
+	if config.URL == "" && config.InputFile == "" {
+		fmt.Fprintf(os.Stderr, "Error: URL or input file (-i) required\n")
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] URL\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "   or: %s -i=FILE [OPTIONS]\n", os.Args[0])
 		flag.PrintDefaults()
 		os.Exit(1)
-	}
-
-	if len(args) > 0 {
-		config.URL = args[0]
 	}
 
 	// Validate flag combinations
@@ -78,7 +82,7 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("--reject, --exclude, and --convert-links can only be used with --mirror")
 	}
 
-	// Input file vs URL validation
+	// Don't allow both input file and URL
 	if config.InputFile != "" && config.URL != "" {
 		return fmt.Errorf("cannot specify both input file (-i) and URL")
 	}
@@ -93,7 +97,7 @@ func executeDownload(config *Config, logger *logging.Logger) error {
 			OutputName: config.OutputName,
 			OutputPath: config.OutputPath,
 			RateLimit:  config.RateLimit,
-		})
+		}, logger)
 	}
 
 	// Batch download from file
@@ -108,7 +112,7 @@ func executeDownload(config *Config, logger *logging.Logger) error {
 	if config.Mirror {
 		rejectTypes := parseCommaSeparated(config.Reject)
 		excludeDirs := parseCommaSeparated(config.Exclude)
-		
+
 		return mirror.MirrorWebsite(config.URL, &mirror.Options{
 			RejectTypes:  rejectTypes,
 			ExcludeDirs:  excludeDirs,
