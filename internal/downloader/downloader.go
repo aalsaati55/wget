@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -127,19 +128,21 @@ func DownloadFile(urlStr string, options *Options, logger *logging.Logger) error
 
 // Read implements io.Reader interface with progress tracking and rate limiting
 func (pr *ProgressReader) Read(p []byte) (int, error) {
-	// Apply rate limiting if configured
-	if pr.limiter != nil {
-		// Wait for rate limiter permission
-		err := pr.limiter.WaitN(nil, len(p))
-		if err != nil {
-			return 0, err
+	n, err := pr.reader.Read(p)
+	
+	// Apply rate limiting if configured and we actually read data
+	if n > 0 && pr.limiter != nil {
+		// Wait for rate limiter permission for the bytes we actually read
+		// Use context.Background() instead of nil
+		waitErr := pr.limiter.WaitN(context.Background(), n)
+		if waitErr != nil {
+			return n, waitErr
 		}
 	}
 
-	n, err := pr.reader.Read(p)
 	if n > 0 {
 		pr.downloaded += int64(n)
-
+		
 		// Update progress every 100ms to avoid too frequent updates
 		now := time.Now()
 		if now.Sub(pr.lastUpdate) >= 100*time.Millisecond || err == io.EOF {
@@ -257,10 +260,14 @@ func parseRateLimit(rateStr string) (*rate.Limiter, error) {
 	}
 
 	// Create rate limiter
-	// Use burst size of 1KB to allow for smooth downloads
-	burstSize := int(1024)
-	if bytesPerSecond < 1024 {
-		burstSize = int(bytesPerSecond)
+	// For very low rates, we need a burst size that can handle typical read sizes
+	// but still respect the overall rate limit
+	burstSize := int(bytesPerSecond * 2) // Allow 2 seconds worth of data as burst
+	if burstSize < 4096 {                // Minimum 4KB burst to handle typical reads
+		burstSize = 4096
+	}
+	if burstSize > 32768 { // Maximum 32KB burst for efficiency
+		burstSize = 32768
 	}
 
 	return rate.NewLimiter(rate.Limit(bytesPerSecond), burstSize), nil
