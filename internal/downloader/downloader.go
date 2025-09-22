@@ -263,10 +263,7 @@ func parseRateLimit(rateStr string) (*rate.Limiter, error) {
 	// For very low rates, we need a burst size that can handle typical read sizes
 	// but still respect the overall rate limit
 	burstSize := int(bytesPerSecond * 2) // Allow 2 seconds worth of data as burst
-	if burstSize < 4096 {                // Minimum 4KB burst to handle typical reads
-		burstSize = 4096
-	}
-	if burstSize > 32768 { // Maximum 32KB burst for efficiency
+	if burstSize < 32768 {               // Minimum 32KB burst to handle all buffer sizes
 		burstSize = 32768
 	}
 
