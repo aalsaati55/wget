@@ -43,9 +43,14 @@ func DownloadFile(urlStr string, options *Options, logger *logging.Logger) error
 		return fmt.Errorf("invalid URL: %v", err)
 	}
 
-	// Create HTTP client
+	// Create HTTP client with appropriate timeout
+	// If rate limiting is enabled, use a longer timeout or no timeout
+	timeout := 30 * time.Second
+	if options.RateLimit != "" {
+		timeout = 0 // No timeout when rate limiting (rate limiter controls the speed)
+	}
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: timeout,
 	}
 
 	// Make HTTP request
@@ -259,12 +264,20 @@ func parseRateLimit(rateStr string) (*rate.Limiter, error) {
 		return nil, fmt.Errorf("rate limit must be positive")
 	}
 
-	// Create rate limiter
-	// For very low rates, we need a burst size that can handle typical read sizes
-	// but still respect the overall rate limit
-	burstSize := int(bytesPerSecond * 2) // Allow 2 seconds worth of data as burst
-	if burstSize < 32768 {               // Minimum 32KB burst to handle all buffer sizes
-		burstSize = 32768
+	// Create rate limiter with a controlled burst size
+	// The burst must accommodate the read buffer size but shouldn't be too large
+	// to prevent initial speed spikes
+	burstSize := 32768 // Minimum 32KB to handle standard read buffer
+	
+	// For higher rates, allow proportional burst but cap it
+	if bytesPerSecond > float64(burstSize) {
+		// Use 10% of rate per second as burst, but cap at 128KB
+		calculatedBurst := int(bytesPerSecond * 0.1)
+		if calculatedBurst > 131072 { // 128KB max
+			burstSize = 131072
+		} else if calculatedBurst > burstSize {
+			burstSize = calculatedBurst
+		}
 	}
 
 	return rate.NewLimiter(rate.Limit(bytesPerSecond), burstSize), nil
